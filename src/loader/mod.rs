@@ -519,8 +519,6 @@ impl KernelLoader for Image {
 #[cfg(test)]
 mod test {
     use super::*;
-    #[cfg(any(feature = "elf", feature = "bzimage"))]
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     use std::io::Cursor;
     use vm_memory::{Address, GuestAddress, GuestMemoryMmap};
 
@@ -544,6 +542,15 @@ mod test {
     fn make_elf_bin() -> Vec<u8> {
         let mut v = Vec::new();
         v.extend_from_slice(include_bytes!("test_elf.bin"));
+        v
+    }
+
+    // first 4096 bytes of a precompiled ARM64 kernel Image.
+    #[cfg(feature = "image")]
+    #[cfg(target_arch = "aarch64")]
+    fn make_image_bin() -> Vec<u8> {
+        let mut v = Vec::new();
+        v.extend_from_slice(include_bytes!("test_image.bin"));
         v
     }
 
@@ -667,6 +674,24 @@ mod test {
                 Some(highmem_start_address)
             )
         );
+    }
+
+    #[test]
+    #[cfg(feature = "image")]
+    #[cfg(target_arch = "aarch64")]
+    fn load_image() {
+        let gm = create_guest_mem();
+        let mut image = make_image_bin();
+        let kernel_addr = GuestAddress(0x200000);
+
+        let loader_result =
+            Image::load(&gm, Some(kernel_addr), &mut Cursor::new(&image), None).unwrap();
+        assert_eq!(loader_result.kernel_load.raw_value(), 0x280000);
+        assert_eq!(loader_result.kernel_end, 0x281000);
+
+        image[0x39] = 0x0;
+        let loader_result = Image::load(&gm, Some(kernel_addr), &mut Cursor::new(&image), None);
+        assert_eq!(loader_result, Err(Error::InvalidImageMagicNumber));
     }
 
     #[test]
